@@ -38,8 +38,8 @@ export default function Page() {
         if (!mounted) return;
         if (data.token) {
           setToken(data.token);
-          // 使用 HTTPS 和 WSS，避免域名重定向问题
-          setServerUrl('ws://111.186.56.118:7880');
+          // 使用本地Docker LiveKit服务器
+          setServerUrl('ws://localhost:7880');
         }
       } catch (e) {
         console.error(e);
