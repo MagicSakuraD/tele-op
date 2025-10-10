@@ -7,6 +7,7 @@ import {
   useTracks,
   TrackLoop,
   useRoomContext,
+  ConnectionQualityIndicator,
 } from '@livekit/components-react';
 import { useDataChannel } from '@livekit/components-react';
 import { Track, VideoQuality } from 'livekit-client';
@@ -87,41 +88,6 @@ export default function Page() {
   );
 }
 
-// 自定义连接质量显示组件
-function CustomConnectionQuality() {
-  const room = useRoomContext();
-  const localParticipant = room?.localParticipant;
-  
-  if (!localParticipant) return <span className="text-gray-400">未知</span>;
-  
-  const quality = localParticipant.connectionQuality;
-  
-  const getQualityColor = (quality: string) => {
-    switch (quality) {
-      case 'excellent': return 'text-green-400';
-      case 'good': return 'text-yellow-400';
-      case 'poor': return 'text-orange-400';
-      case 'unknown': return 'text-gray-400';
-      default: return 'text-gray-400';
-    }
-  };
-  
-  const getQualityText = (quality: string) => {
-    switch (quality) {
-      case 'excellent': return '优秀';
-      case 'good': return '良好';
-      case 'poor': return '较差';
-      case 'unknown': return '未知';
-      default: return '未知';
-    }
-  };
-  
-  return (
-    <span className={`text-sm font-medium ${getQualityColor(quality)}`}>
-      {getQualityText(quality)}
-    </span>
-  );
-}
 
 // 自定义参与者名称显示组件
 function CustomParticipantName() {
@@ -241,67 +207,11 @@ function ExcavatorControlInterface() {
       <ExcavatorVideoStream />
       <RoomAudioRenderer />
 
-      {/* 右下角：游戏手柄可视化 HUD */}
-      <div className="absolute bottom-6 right-6 z-50">
-        <GamepadHUD controls={controls} />
-      </div>
+      {/* 右下角：连接质量指示器 */}
     </div>
   );
 }
 
-function Bar({ label, value, color = 'from-cyan-400 to-blue-500' }: { label: string; value: number; color?: string }) {
-  const pct = Math.min(1, Math.max(0, (value + 1) / 2)); // map [-1,1] -> [0,1]
-  return (
-    <div className="mb-2">
-      <div className="flex items-center justify-between text-xs text-white/70 mb-1">
-        <span>{label}</span>
-        <span className="font-mono text-white/60">{value.toFixed(2)}</span>
-      </div>
-      <div className="w-64 h-2 rounded-full bg-white/10 overflow-hidden">
-        <div
-          className={`h-2 bg-gradient-to-r ${color}`}
-          style={{ width: `${pct * 100}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function GamepadHUD({ controls }: { controls: UnifiedVehicleControls }) {
-  return (
-    <div className="backdrop-blur-md bg-black/40 border border-white/15 rounded-xl p-4 min-w-[300px] text-white">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-sm font-medium">手柄输入监视</div>
-        <div className="text-xs text-white/60">{controls.deviceType}</div>
-      </div>
-
-      {/* 档位 */}
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-xs text-white/60">档位</span>
-        <span className="px-2 py-0.5 rounded-md bg-white/10 text-xs font-mono">
-          {controls.gear || '—'}
-        </span>
-      </div>
-
-      {/* 装载机常用 */}
-      <Bar label="转向 rotation" value={Number.isFinite(controls.rotation) ? controls.rotation : 0} />
-      <Bar label="油门 throttle" value={(Number.isFinite(controls.throttle) ? controls.throttle : 0) * 2 - 1} color="from-green-400 to-emerald-500" />
-      <Bar label="刹车 brake" value={(Number.isFinite(controls.brake) ? controls.brake : 0) * 2 - 1} color="from-red-400 to-rose-500" />
-
-      {/* 共用工作装置 */}
-      <div className="mt-3" />
-      <Bar label="大臂 boom" value={Number.isFinite(controls.boom) ? controls.boom : 0} color="from-yellow-400 to-amber-500" />
-      <Bar label="铲斗 bucket" value={Number.isFinite(controls.bucket) ? controls.bucket : 0} color="from-orange-400 to-red-500" />
-
-      {/* 挖掘机履带 */}
-      <div className="mt-3" />
-      <Bar label="左履带 leftTrack" value={Number.isFinite(controls.leftTrack) ? controls.leftTrack : 0} color="from-teal-400 to-cyan-500" />
-      <Bar label="右履带 rightTrack" value={Number.isFinite(controls.rightTrack) ? controls.rightTrack : 0} color="from-teal-400 to-cyan-500" />
-      <Bar label="回转 swing" value={Number.isFinite(controls.swing) ? controls.swing : 0} color="from-indigo-400 to-purple-500" />
-      <Bar label="小臂 stick" value={Number.isFinite(controls.stick) ? controls.stick : 0} color="from-indigo-400 to-purple-500" />
-    </div>
-  );
-}
 
 // 精简页面需求：只负责远程视频与状态显示
 
@@ -317,29 +227,29 @@ function ExcavatorVideoStream() {
     { onlySubscribed: true }
   );
 
-  // // 简化视频调试信息（保留关键）
-  // console.log('[Video] state=', room?.state, 'participants=', remoteParticipants.size, 'tracks=', tracks.length);
+  // 简化视频调试信息（保留关键）
+  console.log('[Video] state=', room?.state, 'participants=', remoteParticipants.size, 'tracks=', tracks.length);
   
-  // // 详细分析每个远程参与者
-  // if (remoteParticipants.size > 0) {
-  //   console.log('🔍 远程参与者详细信息:');
-  //   remoteParticipants.forEach((participant, identity) => {
-  //     console.log(`  - 参与者: ${identity}`);
-  //     console.log(`    - 连接质量: ${participant.connectionQuality}`);
-  //     console.log(`    - 发布的轨道数量: ${participant.trackPublications.size}`);
+  // 详细分析每个远程参与者
+  if (remoteParticipants.size > 0) {
+    console.log('🔍 远程参与者详细信息:');
+    remoteParticipants.forEach((participant, identity) => {
+      console.log(`  - 参与者: ${identity}`);
+      console.log(`    - 连接质量: ${participant.connectionQuality}`);
+      console.log(`    - 发布的轨道数量: ${participant.trackPublications.size}`);
       
-  //     // 检查每个发布的轨道
-  //     participant.trackPublications.forEach((publication, trackSid) => {
-  //       console.log(`    - 轨道 ${trackSid}:`);
-  //       console.log(`      - 类型: ${publication.kind}`);
-  //       console.log(`      - 来源: ${publication.source}`);
-  //       console.log(`      - 是否订阅: ${publication.isSubscribed}`);
-  //       console.log(`      - 是否启用: ${publication.isEnabled}`);
-  //       console.log(`      - 是否静音: ${publication.isMuted}`);
-  //       console.log(`      - 轨道状态: ${publication.track ? '已连接' : '未连接'}`);
-  //     });
-  //   });
-  // }
+      // 检查每个发布的轨道
+      participant.trackPublications.forEach((publication, trackSid) => {
+        console.log(`    - 轨道 ${trackSid}:`);
+        console.log(`      - 类型: ${publication.kind}`);
+        console.log(`      - 来源: ${publication.source}`);
+        console.log(`      - 是否订阅: ${publication.isSubscribed}`);
+        console.log(`      - 是否启用: ${publication.isEnabled}`);
+        console.log(`      - 是否静音: ${publication.isMuted}`);
+        console.log(`      - 轨道状态: ${publication.track ? '已连接' : '未连接'}`);
+      });
+    });
+  }
   
   // 仅保留远程的视频相机轨
   const remoteVideoTracks = tracks.filter((t) => !t.participant.isLocal && (t.publication?.kind === 'video' || t.source === Track.Source.Camera));
