@@ -7,10 +7,11 @@ import {
   useTracks,
   TrackLoop,
   useRoomContext,
-  ConnectionQualityIndicator,
+  useConnectionQualityIndicator,
+  useConnectionState,
 } from '@livekit/components-react';
 import { useDataChannel } from '@livekit/components-react';
-import { Track, VideoQuality } from 'livekit-client';
+import { Track, VideoQuality, TrackEvent } from 'livekit-client';
 import '@livekit/components-styles';
 import { useEffect, useRef, useState } from 'react';
 import { useUnifiedVehicleGamepad, DeviceType } from '../../hooks/useExcavatorGamepad';
@@ -207,11 +208,67 @@ function ExcavatorControlInterface() {
       <ExcavatorVideoStream />
       <RoomAudioRenderer />
 
-      {/* 右下角：连接质量指示器 */}
-    </div>
+      {/* 右下角：视频分辨率 */}
+      <div className="absolute bottom-6 right-6 z-50">
+        <ResolutionBadge />
+      </div>
+      </div>
   );
 }
 
+// 视频分辨率徽章（官方API）
+function ResolutionBadge() {
+  const room = useRoomContext();
+  const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: false }], { onlySubscribed: true });
+  const [resolution, setResolution] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  // 稳定选取一个远程视频轨（避免依赖整个 tracks 数组导致频繁重跑）
+  const videoTrack: any = (() => {
+    const remoteVideo = tracks.find(
+      (t) => !t.participant.isLocal && (t.publication?.kind === 'video' || t.source === Track.Source.Camera)
+    );
+    return remoteVideo?.publication?.track as any;
+  })();
+
+  useEffect(() => {
+    if (!videoTrack) return;
+
+    const ms: MediaStreamTrack | undefined = videoTrack.mediaStreamTrack;
+    const safeSet = (w?: number, h?: number) => {
+      if (!w || !h) return;
+      setResolution((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+
+    // 初始读取 settings
+    const s = ms?.getSettings?.();
+    safeSet(s?.width as number | undefined, s?.height as number | undefined);
+
+    const onDims = () => {
+      const dims = (videoTrack as any).dimensions;
+      if (dims?.width && dims?.height) safeSet(dims.width, dims.height);
+      else {
+        const s2 = ms?.getSettings?.();
+        safeSet(s2?.width as number | undefined, s2?.height as number | undefined);
+      }
+    };
+
+    videoTrack.on?.(TrackEvent.VideoDimensionsChanged, onDims);
+    return () => {
+      videoTrack.off?.(TrackEvent.VideoDimensionsChanged, onDims);
+    };
+  }, [videoTrack]);
+
+  if (!resolution.w || !resolution.h) return null;
+
+  return (
+    <div className="backdrop-blur-md bg-black/30 rounded-xl p-3 border border-white/20">
+      <div className="flex items-center gap-2 text-white text-sm">
+        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+        <span>{resolution.w}x{resolution.h}</span>
+      </div>
+    </div>
+  );
+}
 
 // 精简页面需求：只负责远程视频与状态显示
 
@@ -231,25 +288,25 @@ function ExcavatorVideoStream() {
   console.log('[Video] state=', room?.state, 'participants=', remoteParticipants.size, 'tracks=', tracks.length);
   
   // 详细分析每个远程参与者
-  if (remoteParticipants.size > 0) {
-    console.log('🔍 远程参与者详细信息:');
-    remoteParticipants.forEach((participant, identity) => {
-      console.log(`  - 参与者: ${identity}`);
-      console.log(`    - 连接质量: ${participant.connectionQuality}`);
-      console.log(`    - 发布的轨道数量: ${participant.trackPublications.size}`);
+  // if (remoteParticipants.size > 0) {
+  //   console.log('🔍 远程参与者详细信息:');
+  //   remoteParticipants.forEach((participant, identity) => {
+  //     console.log(`  - 参与者: ${identity}`);
+  //     console.log(`    - 连接质量: ${participant.connectionQuality}`);
+  //     console.log(`    - 发布的轨道数量: ${participant.trackPublications.size}`);
       
-      // 检查每个发布的轨道
-      participant.trackPublications.forEach((publication, trackSid) => {
-        console.log(`    - 轨道 ${trackSid}:`);
-        console.log(`      - 类型: ${publication.kind}`);
-        console.log(`      - 来源: ${publication.source}`);
-        console.log(`      - 是否订阅: ${publication.isSubscribed}`);
-        console.log(`      - 是否启用: ${publication.isEnabled}`);
-        console.log(`      - 是否静音: ${publication.isMuted}`);
-        console.log(`      - 轨道状态: ${publication.track ? '已连接' : '未连接'}`);
-      });
-    });
-  }
+  //     // 检查每个发布的轨道
+  //     participant.trackPublications.forEach((publication, trackSid) => {
+  //       console.log(`    - 轨道 ${trackSid}:`);
+  //       console.log(`      - 类型: ${publication.kind}`);
+  //       console.log(`      - 来源: ${publication.source}`);
+  //       console.log(`      - 是否订阅: ${publication.isSubscribed}`);
+  //       console.log(`      - 是否启用: ${publication.isEnabled}`);
+  //       console.log(`      - 是否静音: ${publication.isMuted}`);
+  //       console.log(`      - 轨道状态: ${publication.track ? '已连接' : '未连接'}`);
+  //     });
+  //   });
+  // }
   
   // 仅保留远程的视频相机轨
   const remoteVideoTracks = tracks.filter((t) => !t.participant.isLocal && (t.publication?.kind === 'video' || t.source === Track.Source.Camera));
@@ -365,17 +422,6 @@ function ExcavatorVideoStream() {
         </div>
       </div>
 
-      {/* 视频质量指示器 - 右下角 */}
-      {hasVideo && (
-        <div className="absolute bottom-6 right-6 z-50">
-          <div className="backdrop-blur-md bg-black/30 rounded-xl p-3 border border-white/20">
-            <div className="flex items-center gap-2 text-white text-sm">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span>HD 1080p</span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
