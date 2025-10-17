@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   // 使用本地Docker LiveKit服务器的默认配置
   const apiKey = process.env.LIVEKIT_API_KEY || 'devkey';
   const apiSecret = process.env.LIVEKIT_API_SECRET || 'secret';
-  const wsUrl = process.env.LIVEKIT_URL || 'ws://localhost:7880';
+  const wsUrl = process.env.LIVEKIT_URL || 'ws://192.168.3.41:7880';
 
   if (!apiKey || !apiSecret || !wsUrl) {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });

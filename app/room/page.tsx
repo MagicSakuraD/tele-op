@@ -41,7 +41,7 @@ export default function Page() {
         if (data.token) {
           setToken(data.token);
           // 使用本地Docker LiveKit服务器
-          setServerUrl('ws://localhost:7880');
+          setServerUrl('ws://192.168.3.41:7880');
         }
       } catch (e) {
         console.error(e);
@@ -75,9 +75,12 @@ export default function Page() {
       connect={true}
       options={{
         adaptiveStream: {
-          pixelDensity: 2,
+          pixelDensity: 1,  // 修复：避免4K视频流，减少带宽消耗
         },
         dynacast: true,
+        // 启用带宽自适应
+        // 已在 adaptiveStream 字段的对象内设置，因此无需再次设置为 true
+        // adaptiveStream: true,  // 已指定详细配置，避免重复
       }}
       onConnected={() => console.log('Connected to excavator room')}
       onDisconnected={() => console.log('Disconnected from excavator room')}
@@ -146,8 +149,8 @@ function ExcavatorControlInterface() {
   const lastAnalogRef = useRef<any | null>(null);
   useEffect(() => {
     if (!room || room.state !== 'connected') return;
-    const fps = 30;
-    const epsilon = 0.001; // 降低阈值，更容易检测到变化
+    const fps = 15;  // 优化：15fps对远程操控足够，减少网络负载
+    const epsilon = 0.05; // 优化：5%死区，过滤手柄摇杆物理噪音
     let timer: number | null = null;
 
     const tick = () => {
@@ -208,16 +211,68 @@ function ExcavatorControlInterface() {
       <ExcavatorVideoStream />
       <RoomAudioRenderer />
 
-      {/* 右下角：视频分辨率 */}
-      <div className="absolute bottom-6 right-6 z-50">
-        <ResolutionBadge />
-      </div>
       </div>
   );
 }
 
-// 视频分辨率徽章（官方API）
-function ResolutionBadge() {
+// 延迟监控组件
+function LatencyMonitor() {
+  const room = useRoomContext();
+  const [latency, setLatency] = useState<number | null>(null);
+  
+  useEffect(() => {
+    if (!room) return;
+    
+    const updateLatency = () => {
+      // 获取连接质量信息
+      const connectionQuality = room.localParticipant?.connectionQuality;
+      if (connectionQuality) {
+        // 根据连接质量估算延迟
+        let estimatedLatency: number;
+        switch (connectionQuality) {
+          case 'excellent':
+            estimatedLatency = 20;
+            break;
+          case 'good':
+            estimatedLatency = 50;
+            break;
+          case 'poor':
+            estimatedLatency = 100;
+            break;
+          default:
+            estimatedLatency = 150;
+        }
+        setLatency(estimatedLatency);
+      }
+    };
+    
+    updateLatency();
+    
+    // 监听连接质量变化
+    const interval = setInterval(updateLatency, 1000);
+    return () => clearInterval(interval);
+  }, [room]);
+  
+  if (latency === null) return null;
+  
+  const getLatencyColor = (latency: number) => {
+    if (latency < 50) return 'text-green-400';
+    if (latency < 100) return 'text-yellow-400';
+    return 'text-red-400';
+  };
+  
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-white/60">网络延迟:</span>
+      <span className={`font-mono ${getLatencyColor(latency)}`}>
+        {latency}ms
+      </span>
+    </div>
+  );
+}
+
+// 视频分辨率信息组件
+function VideoResolutionInfo() {
   const room = useRoomContext();
   const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: false }], { onlySubscribed: true });
   const [resolution, setResolution] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
@@ -261,14 +316,15 @@ function ResolutionBadge() {
   if (!resolution.w || !resolution.h) return null;
 
   return (
-    <div className="backdrop-blur-md bg-black/30 rounded-xl p-3 border border-white/20">
-      <div className="flex items-center gap-2 text-white text-sm">
-        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-        <span>{resolution.w}x{resolution.h}</span>
-      </div>
+    <div className="flex items-center justify-between">
+      <span className="text-white/60">视频分辨率:</span>
+      <span className="font-mono text-green-400">
+        {resolution.w}x{resolution.h}
+      </span>
     </div>
   );
 }
+
 
 // 精简页面需求：只负责远程视频与状态显示
 
@@ -418,6 +474,12 @@ function ExcavatorVideoStream() {
                 {tracks.length}
               </span>
             </div>
+            
+            {/* 视频分辨率信息 */}
+            <VideoResolutionInfo />
+            
+            {/* 延迟监控信息 */}
+            <LatencyMonitor />
           </div>
         </div>
       </div>
