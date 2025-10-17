@@ -19,7 +19,7 @@ import type { UnifiedVehicleControls } from '../../hooks/useExcavatorGamepad';
 
 export default function Page() {
   // 挖掘机远程控制房间
-  const room = 'excavator-control-room';
+  const room = process.env.NEXT_PUBLIC_ROOM_NAME || 'excavator-control-room';
   const name = 'operator-console';
   const [token, setToken] = useState('');
   const [serverUrl, setServerUrl] = useState('');
